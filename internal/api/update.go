@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 
 	"featureflags/internal/store"
@@ -22,8 +23,19 @@ func UpdateFlag(s *store.Store, w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req updateFlagRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(&req); err != nil {
 		WriteError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		WriteError(w, http.StatusBadRequest, "unexpected trailing data")
+		return
+	}
+
+	if req.Description != nil && len(*req.Description) > maxDescriptionLength {
+		WriteError(w, http.StatusBadRequest, "description too long")
 		return
 	}
 
