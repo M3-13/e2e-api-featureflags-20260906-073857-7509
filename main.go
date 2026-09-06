@@ -42,8 +42,33 @@ func newHandler(s *store.Store) http.Handler {
 
 	var handler http.Handler = mux
 	handler = json405(handler)
+	if apiKey := os.Getenv("FLAG_API_KEY"); apiKey != "" {
+		handler = requireAPIKeyOnFlags(apiKey, handler)
+	}
 	handler = middleware.Logging(handler)
 	return handler
+}
+
+// requireAPIKeyOnFlags applies RequireAPIKey only to the /flags routes, leaving
+// GET /healthz reachable without authentication.
+func requireAPIKeyOnFlags(apiKey string, next http.Handler) http.Handler {
+	require := middleware.RequireAPIKey(apiKey)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isFlagsPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		require(next).ServeHTTP(w, r)
+	})
+}
+
+func isFlagsPath(p string) bool {
+	trimmed := strings.TrimPrefix(p, "/")
+	seg := trimmed
+	if i := strings.IndexByte(trimmed, '/'); i >= 0 {
+		seg = trimmed[:i]
+	}
+	return seg == "flags"
 }
 
 func main() {
@@ -55,8 +80,22 @@ func main() {
 		port = "8080"
 	}
 
+	certFile := os.Getenv("TLS_CERT_FILE")
+	keyFile := os.Getenv("TLS_KEY_FILE")
+	tlsEnabled := certFile != "" && keyFile != ""
+
+	// Default to loopback so the service never exposes itself without TLS.
+	addr := "127.0.0.1:" + port
+	if listenAddr := os.Getenv("LISTEN_ADDR"); listenAddr != "" {
+		if bindsAllInterfaces(listenAddr) && !tlsEnabled {
+			log.Printf("LISTEN_ADDR %q binds all interfaces but TLS is not configured; binding %q instead", listenAddr, addr)
+		} else {
+			addr = listenAddr
+		}
+	}
+
 	srv := &http.Server{
-		Addr:              ":" + port,
+		Addr:              addr,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       15 * time.Second,
@@ -64,10 +103,30 @@ func main() {
 		IdleTimeout:       30 * time.Second,
 	}
 
-	log.Printf("listening on :%s", port)
+	if tlsEnabled {
+		log.Printf("listening on %s (TLS)", addr)
+		if err := srv.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server error: %v", err)
+		}
+		return
+	}
+
+	log.Printf("listening on %s", addr)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server error: %v", err)
 	}
+}
+
+// bindsAllInterfaces reports whether addr's host part denotes every interface
+// ("", "0.0.0.0" or "::"), as opposed to a single loopback or specific host.
+func bindsAllInterfaces(addr string) bool {
+	host := addr
+	if i := strings.LastIndex(addr, ":"); i >= 0 {
+		host = addr[:i]
+	}
+	host = strings.TrimPrefix(host, "[")
+	host = strings.TrimSuffix(host, "]")
+	return host == "" || host == "0.0.0.0" || host == "::"
 }
 
 type methodNotAllowedWriter struct {
