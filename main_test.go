@@ -33,6 +33,24 @@ func TestRoutesAreWired(t *testing.T) {
 	}
 }
 
+func TestUnknownPathReturnsJSON404(t *testing.T) {
+	h := newHandler(store.New())
+	for _, path := range []string{"/nope", "/flags/x/y/z", "/other"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("GET %s -> expected 404, got %d", path, rec.Code)
+		}
+		if !strings.HasPrefix(rec.Header().Get("Content-Type"), "application/json") {
+			t.Errorf("GET %s -> 404 without JSON content-type: %q", path, rec.Header().Get("Content-Type"))
+		}
+		if !strings.Contains(rec.Body.String(), `"error"`) {
+			t.Errorf("GET %s -> body not a JSON error object: %q", path, rec.Body.String())
+		}
+	}
+}
+
 func TestWrongMethodReturnsJSON405(t *testing.T) {
 	h := newHandler(store.New())
 	rec := httptest.NewRecorder()
