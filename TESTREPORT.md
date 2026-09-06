@@ -1,9 +1,9 @@
 VERDICT: BUGS_FOUND
 
-- **Titel:** Root-Test `TestEndpointsWired` wertet 404 für unbekannten Key als „Route nicht verdrahtet“
-- **Symptom:** `go test ./...` endet mit Exit-Code 1. Drei Untertests von `TestEndpointsWired` schlagen fehl, weil sie den nicht existierenden Key `some-key` verwenden und einen 404-Response als nicht registrierte Route interpretieren. Die Spezifikation verlangt für unbekannte Keys jedoch genau 404 (AC-04, AC-06); der Test ist zu streng und blockiert die grüne Test-Suite.
-- **Repro:** `go test ./...`
-- **Evidence:**
+**Bug 1: Integrationstest `TestEndpointsWired` schlägt fehl, weil korrekte 404-Antworten als fehlende Routen gewertet werden**
+- **Symptom**: `go test ./...` bricht ab. Der Test verlangt für GET/DELETE/Evaluate auf einen unbekannten Flag-Key einen Status ungleich 404; die API liefert aber spezifikationsgemäß 404 mit JSON-Fehlerobjekt (AC-04/AC-06).
+- **Repro**: `go test ./...` im Projektstamm ausführen.
+- **Evidence**:
   ```
   --- FAIL: TestEndpointsWired (0.00s)
       --- FAIL: TestEndpointsWired/GET_/flags/some-key (0.00s)
@@ -13,16 +13,23 @@ VERDICT: BUGS_FOUND
       --- FAIL: TestEndpointsWired/GET_/flags/some-key/evaluate?user=alice (0.00s)
           flags_api_test.go:138: GET /flags/some-key/evaluate?user=alice -> 404 (route not wired)
   ```
-- **Suspected file(s):** `flags_api_test.go` (Testfunktion `TestEndpointsWired`). Die Routen selbst sind in `main.go` korrekt registriert; der Test müsste einen zuvor angelegten Key verwenden.
-- **Severity:** high (AC-10 verletzt, CI rot)
+- **Suspected file(s)**: `flags_api_test.go` (Testlogik). Die Produkthandler in `internal/api/get.go`, `internal/api/delete.go` und `internal/api/evaluate.go` liefern für unbekannte Keys korrekt 404.
+- **Severity**: high
 
-- **Titel:** Root-Test `TestEvaluateRolloutBoundaries` erhält 409 beim Anlegen eines Flags mit Rollout 100
-- **Symptom:** Beim Erzeugen des Flags für den Boundary-Test liefert `POST /flags` 409 Conflict statt 201 Created. Dadurch bricht der Test ab und die gesamte Test-Suite bleibt rot.
-- **Repro:** `go test ./...` (führt `TestEvaluateRolloutBoundaries` aus)
-- **Evidence:**
+**Bug 2: Integrationstest `TestEvaluateRolloutBoundaries` kollidiert mit einem bereits angelegten Flag und schlägt fehl**
+- **Symptom**: Der Test legt nacheinander Flags für die Rollout-Grenzen an; der zweite POST für `rollout_percent=100` erhält 409 (Conflict) statt 201, weil derselbe Key erneut verwendet wird. Der Testlauf bricht dadurch ab.
+- **Repro**: `go test ./...` im Projektstamm ausführen.
+- **Evidence**:
   ```
   --- FAIL: TestEvaluateRolloutBoundaries (0.00s)
       flags_api_test.go:326: create rollout 100 -> 409
   ```
-- **Suspected file(s):** `flags_api_test.go` (Testfunktion `TestEvaluateRolloutBoundaries`). Vermutlich wird ein fester oder bereits verwendeter Key genutzt, oder `uniqueKey()` kollidiert; der Test muss einen frischen Key sicherstellen.
-- **Severity:** high (AC-10 verletzt, CI rot)
+  Im Test-Log zuvor:
+  ```
+  POST /flags 201
+  POST /flags 409
+  ```
+- **Suspected file(s)**: `flags_api_test.go` (Key-Erzeugung/Testdaten; der Helper `uniqueKey` liefert im schnellen Testablauf offenbar denselben Wert oder der Test verwendet denselben Key für beide Boundary-Fälle).
+- **Severity**: high
+
+Der Build (`go build ./...`) ist grün, aber `go test ./...` schlägt fehl. Damit ist AC-10 („go test führt alle Handler- und Rollout-Tests erfolgreich aus“) nicht erfüllt; der Testlauf ist fehlgeschlagen, daher BUGS_FOUND.
