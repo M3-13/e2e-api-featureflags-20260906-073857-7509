@@ -90,3 +90,19 @@ curl "http://localhost:8080/flags/new-feature/evaluate?user=alice"
 - Logging ausschließlich von Methode, Pfad und Statuscode (kein Query-String)
 - Body-Größenbegrenzung (1 MiB) für `POST /flags` und `PUT /flags/{key}`
 - Server-Timeouts gegen hängende Clients
+
+## Sicherheit, Updates, Support-Zeitraum
+
+- **TLS-Betrieb**: Der Service ist für den Betrieb hinter einem TLS-Terminierungspunkt
+  (Reverse Proxy / Load Balancer) vorgesehen. Der direkte Betrieb ohne TLS ist nur
+  für lokale Entwicklung gedacht.
+- **FLAG_API_KEY**: Zugriffsgeschützte Endpunkte erfordern einen API-Key aus der
+  Umgebungsvariable `FLAG_API_KEY`. Ohne gesetzten Key verhalten sich geschützte
+  Routen gemäß der sicheren Default-Konfiguration (abgelehnt bzw. deaktiviert).
+- **Update-Politik**: Der Service folgt semantischer Versionierung (SemVer).
+  Sicherheitsrelevante Aktualisierungen und Bugfixes werden als Patch-/Minor-Releases
+  bereitgestellt. Ein Upgrade wird empfohlen, sobald eine neue Version mit
+  Sicherheitsfixes veröffentlicht ist.
+- **SBOM-Hinweis**: Für dieses Go-Projekt lässt sich eine SBOM (Software Bill of
+  Materials) über `go version -m` bzw. die Go-Werkzeuge erstellen, um die
+  eingesetzten Abhängigkeiten und deren Versionen nachvollziehbar zu dokumentieren.
