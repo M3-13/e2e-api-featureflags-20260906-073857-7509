@@ -76,6 +76,33 @@ func TestEndpointsWired(t *testing.T) {
 			}
 		})
 	}
+
+	// A 404 for an unknown key is NOT a wiring error: the route is wired and
+	// the handler answers with a JSON error object (AC-04/AC-06). Prove the
+	// key-scoped routes are reachable for unknown keys too, by accepting a 404
+	// whose body is a valid JSON error object with an "error" field.
+	unknownCases := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/flags/unknown-key"},
+		{http.MethodDelete, "/flags/unknown-key"},
+		{http.MethodGet, "/flags/unknown-key/evaluate?user=alice"},
+	}
+	for _, uc := range unknownCases {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(uc.method, uc.path, nil))
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s %s -> %d (want 404): %s", uc.method, uc.path, rec.Code, rec.Body.String())
+			continue
+		}
+		var errBody struct {
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &errBody); err != nil || errBody.Error == "" {
+			t.Errorf("%s %s -> 404 without JSON error object: %q", uc.method, uc.path, rec.Body.String())
+		}
+	}
 }
 
 // TestEvaluateRolloutBoundaries verifies AC-08: rollout_percent=0 always
