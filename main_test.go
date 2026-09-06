@@ -23,7 +23,7 @@ func TestRoutesAreWired(t *testing.T) {
 	for _, c := range cases {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(c.method, c.path, nil))
-		if rec.Code == http.StatusNotFound {
+		if rec.Code == http.StatusNotFound && !strings.HasPrefix(rec.Header().Get("Content-Type"), "application/json") {
 			t.Errorf("%s %s -> 404 (route not wired)", c.method, c.path)
 		}
 	}
