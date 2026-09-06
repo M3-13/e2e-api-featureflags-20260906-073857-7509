@@ -1,11 +1,8 @@
 VERDICT: BUGS_FOUND
 
-Der Testlauf ist nicht sauber: `go test ./...` endet mit `exit 1`. Es schlagen zwei Tests im Root-Paket fehl.
-
-**1. Parametrisierte Routen bestehen Verdrahtungsprüfung nicht**
-- **Titel:** Verdrahtungsprüfung für parametrisierte Routen schlägt fehl
-- **Symptom:** Der Test `TestEndpointsWired` meldet für `GET /flags/{key}`, `DELETE /flags/{key}` und `GET /flags/{key}/evaluate` „route not wired“. Die Log-Ausgabe (`GET /flags/some-key 404` usw.) zeigt, dass die Handler grundsätzlich erreicht werden; die 404-Antworten werden vom Test jedoch offenbar nicht als gültige JSON-Fehlerantworten der verdrahteten Routen akzeptiert.
-- **Repro:** `go test ./...` → `TestEndpointsWired`
+- **Titel:** Root-Test `TestEndpointsWired` wertet 404 für unbekannten Key als „Route nicht verdrahtet“
+- **Symptom:** `go test ./...` endet mit Exit-Code 1. Drei Untertests von `TestEndpointsWired` schlagen fehl, weil sie den nicht existierenden Key `some-key` verwenden und einen 404-Response als nicht registrierte Route interpretieren. Die Spezifikation verlangt für unbekannte Keys jedoch genau 404 (AC-04, AC-06); der Test ist zu streng und blockiert die grüne Test-Suite.
+- **Repro:** `go test ./...`
 - **Evidence:**
   ```
   --- FAIL: TestEndpointsWired (0.00s)
@@ -16,17 +13,16 @@ Der Testlauf ist nicht sauber: `go test ./...` endet mit `exit 1`. Es schlagen z
       --- FAIL: TestEndpointsWired/GET_/flags/some-key/evaluate?user=alice (0.00s)
           flags_api_test.go:138: GET /flags/some-key/evaluate?user=alice -> 404 (route not wired)
   ```
-- **Suspected files:** Gemeinsame Schicht ist die Routing-/Middleware-Verdrahtung, daher primär `main.go` (Routenregistrierung, `json405`-Middleware) sowie ggf. `internal/api/errors.go`. Nicht isoliert in den einzelnen API-Dateien, da drei verschiedene Handler betroffen sind.
-- **Severity:** high
+- **Suspected file(s):** `flags_api_test.go` (Testfunktion `TestEndpointsWired`). Die Routen selbst sind in `main.go` korrekt registriert; der Test müsste einen zuvor angelegten Key verwenden.
+- **Severity:** high (AC-10 verletzt, CI rot)
 
-**2. Boundary-Test für rollout_percent=100 schlägt fehl**
-- **Titel:** Boundary-Test für `rollout_percent=100` erhält 409 statt 201
-- **Symptom:** Beim Anlegen eines Flags mit `rollout_percent=100` liefert der Server im Testlauf eine 409-Antwort, obwohl ein neuer Key angelegt werden soll. Dadurch ist die in AC-08 geforderte Zusicherung „rollout_percent=100 => immer an“ nicht erfolgreich über den End-to-End-Test verifiziert.
-- **Repro:** `go test ./...` → `TestEvaluateRolloutBoundaries`
+- **Titel:** Root-Test `TestEvaluateRolloutBoundaries` erhält 409 beim Anlegen eines Flags mit Rollout 100
+- **Symptom:** Beim Erzeugen des Flags für den Boundary-Test liefert `POST /flags` 409 Conflict statt 201 Created. Dadurch bricht der Test ab und die gesamte Test-Suite bleibt rot.
+- **Repro:** `go test ./...` (führt `TestEvaluateRolloutBoundaries` aus)
 - **Evidence:**
   ```
   --- FAIL: TestEvaluateRolloutBoundaries (0.00s)
       flags_api_test.go:326: create rollout 100 -> 409
   ```
-- **Suspected files:** Vermutlich `internal/store/store.go` bzw. `internal/api/create.go` oder mangelnde Isolation des Stores im Integrationstest `flags_api_test.go`. Eine eindeutige Lokalisierung ist aus dem Bericht nicht möglich.
-- **Severity:** high
+- **Suspected file(s):** `flags_api_test.go` (Testfunktion `TestEvaluateRolloutBoundaries`). Vermutlich wird ein fester oder bereits verwendeter Key genutzt, oder `uniqueKey()` kollidiert; der Test muss einen frischen Key sicherstellen.
+- **Severity:** high (AC-10 verletzt, CI rot)
