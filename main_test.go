@@ -10,7 +10,11 @@ import (
 )
 
 func TestRoutesAreWired(t *testing.T) {
-	h := newHandler(store.New())
+	s := store.New()
+	if _, err := s.Create("x", true, "", 0); err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	h := newHandler(s)
 	cases := []struct{ method, path string }{
 		{"POST", "/flags"},
 		{"GET", "/flags"},
