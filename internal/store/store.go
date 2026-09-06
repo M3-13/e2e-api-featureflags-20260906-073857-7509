@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"sort"
 	"sync"
 )
 
@@ -32,21 +33,80 @@ func New() *Store {
 }
 
 func (s *Store) Create(key string, enabled bool, description string, rolloutPercent int) (Flag, error) {
-	return Flag{}, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.flags[key]; ok {
+		return Flag{}, ErrConflict
+	}
+
+	f := Flag{
+		ID:             s.nextID,
+		Key:            key,
+		Enabled:        enabled,
+		Description:    description,
+		RolloutPercent: rolloutPercent,
+	}
+	s.nextID++
+	s.flags[key] = f
+	return f, nil
 }
 
 func (s *Store) Get(key string) (Flag, error) {
-	return Flag{}, nil
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	f, ok := s.flags[key]
+	if !ok {
+		return Flag{}, ErrNotFound
+	}
+	return f, nil
 }
 
 func (s *Store) List() []Flag {
-	return nil
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	flags := make([]Flag, 0, len(s.flags))
+	for _, f := range s.flags {
+		flags = append(flags, f)
+	}
+	sort.Slice(flags, func(i, j int) bool {
+		return flags[i].Key < flags[j].Key
+	})
+	return flags
 }
 
 func (s *Store) Update(key string, enabled *bool, description *string, rolloutPercent *int) (Flag, error) {
-	return Flag{}, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	f, ok := s.flags[key]
+	if !ok {
+		return Flag{}, ErrNotFound
+	}
+
+	if enabled != nil {
+		f.Enabled = *enabled
+	}
+	if description != nil {
+		f.Description = *description
+	}
+	if rolloutPercent != nil {
+		f.RolloutPercent = *rolloutPercent
+	}
+
+	s.flags[key] = f
+	return f, nil
 }
 
 func (s *Store) Delete(key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.flags[key]; !ok {
+		return ErrNotFound
+	}
+	delete(s.flags, key)
 	return nil
 }
