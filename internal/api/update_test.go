@@ -111,6 +111,31 @@ func TestUpdateFlagRolloutOutOfRangeReturns400(t *testing.T) {
 	}
 }
 
+func TestUpdateFlagDescriptionTooLongReturns400(t *testing.T) {
+	s := store.New()
+	if _, err := s.Create("foo", true, "desc", 50); err != nil {
+		t.Fatalf("seed failed: %v", err)
+	}
+
+	body := `{"description":"` + strings.Repeat("x", 1025) + `"}`
+	rec := doUpdate(t, s, "foo", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdateFlagTrailingDataReturns400(t *testing.T) {
+	s := store.New()
+	if _, err := s.Create("foo", true, "desc", 50); err != nil {
+		t.Fatalf("seed failed: %v", err)
+	}
+
+	rec := doUpdate(t, s, "foo", `{"enabled":false} {"extra":true}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestUpdateFlagInvalidJSONReturns400(t *testing.T) {
 	s := store.New()
 

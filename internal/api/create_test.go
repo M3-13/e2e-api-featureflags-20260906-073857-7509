@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -78,6 +79,45 @@ func TestCreateFlagEmptyKey(t *testing.T) {
 	rec := doCreate(s, `{"key":"","enabled":true}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCreateFlagInvalidKey(t *testing.T) {
+	s := store.New()
+
+	for _, key := range []string{
+		`key with spaces`,
+		`key!`,
+		`k` + strings.Repeat("a", 128), // 129 chars
+	} {
+		body := `{"key":` + strconv.Quote(key) + `,"enabled":true}`
+		rec := doCreate(s, body)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 for key %q, got %d", key, rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), `"error"`) {
+			t.Errorf("expected error object in body, got %q", rec.Body.String())
+		}
+	}
+}
+
+func TestCreateFlagDescriptionTooLong(t *testing.T) {
+	s := store.New()
+	body := `{"key":"valid-key","enabled":true,"description":"` + strings.Repeat("x", 1025) + `"}`
+	rec := doCreate(s, body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCreateFlagTrailingData(t *testing.T) {
+	s := store.New()
+	rec := doCreate(s, `{"key":"trail","enabled":true} {"extra":true}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"error"`) {
+		t.Errorf("expected error object in body, got %q", rec.Body.String())
 	}
 }
 
