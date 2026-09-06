@@ -39,6 +39,30 @@ func TestLoggingDoesNotLogQuery(t *testing.T) {
 	}
 }
 
+func TestLoggingEscapesNewlineInPath(t *testing.T) {
+	var buf bytes.Buffer
+	old := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(old)
+
+	handler := Logging(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/flags/fake%0Akey", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	out := buf.String()
+	if !strings.Contains(out, `\n`) {
+		t.Fatalf("log output does not escape the newline control character: %q", out)
+	}
+	trimmed := strings.TrimSuffix(out, "\n")
+	if strings.Contains(trimmed, "\n") {
+		t.Fatalf("log output contains a real newline in the entry: %q", out)
+	}
+}
+
 func TestLimitBodyRejectsOversized(t *testing.T) {
 	handler := LimitBody(4)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)
